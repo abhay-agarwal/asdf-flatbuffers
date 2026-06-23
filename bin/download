@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO="${MISE_TOOL_OPTS__REPO:-${ASDF_FLATC_REPO:-https://github.com/google/flatbuffers.git}}"
+
+[ -n "${ASDF_INSTALL_VERSION:-}" ] || { echo "ASDF_INSTALL_VERSION not set"; exit 1; }
+[ -n "${ASDF_DOWNLOAD_PATH:-}" ]   || { echo "ASDF_DOWNLOAD_PATH not set"; exit 1; }
+
+VER="$ASDF_INSTALL_VERSION"
+rm -rf "$ASDF_DOWNLOAD_PATH"
+
+if [ "$REPO" != "https://github.com/google/flatbuffers.git" ]; then
+  echo "NOTE: building flatc from non-default repo: $REPO"
+fi
+
+# A 7-40 char hex string is treated as a commit SHA; anything else as a vYY.MM.DD tag.
+if printf '%s' "$VER" | grep -qiE '^[0-9a-f]{7,40}$'; then
+  echo "Fetching flatbuffers at commit ${VER} from ${REPO} ..."
+  git init -q "$ASDF_DOWNLOAD_PATH"
+  git -C "$ASDF_DOWNLOAD_PATH" remote add origin "$REPO"
+  if git -C "$ASDF_DOWNLOAD_PATH" fetch --depth 1 origin "$VER" 2>/dev/null; then
+    git -C "$ASDF_DOWNLOAD_PATH" checkout -q FETCH_HEAD
+  else
+    # Short SHA, or a server that won't fetch by sha: full clone then checkout.
+    rm -rf "$ASDF_DOWNLOAD_PATH"
+    git clone "$REPO" "$ASDF_DOWNLOAD_PATH"
+    git -C "$ASDF_DOWNLOAD_PATH" checkout -q "$VER"
+  fi
+else
+  TAG="v${VER}"
+  echo "Cloning flatbuffers ${TAG} from ${REPO} ..."
+  git clone --depth 1 --branch "$TAG" "$REPO" "$ASDF_DOWNLOAD_PATH" \
+    || { echo "Failed to clone tag ${TAG} — check it exists via 'list-all'"; exit 1; }
+fi
+
+# Drop the .git dir so the download cache stays lean.
+rm -rf "$ASDF_DOWNLOAD_PATH/.git"
